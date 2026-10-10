@@ -27,6 +27,7 @@ public partial class OverlayWindow : Window
     private FlyoutWindow? _flyout;
 
     private bool _hasTrack;
+    private readonly DispatcherTimer _noTrackTimer;
     private bool _isPlaying;
     private SourceKind? _currentKind;
     private Color? _adaptiveMain, _adaptiveSecondary;
