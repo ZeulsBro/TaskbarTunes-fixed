@@ -60,7 +60,7 @@ public partial class OverlayWindow : Window
         _clickTimer.Tick += (_, _) => { _clickTimer.Stop(); ToggleFlyout(); };
 _noTrackTimer = new DispatcherTimer
 {
-    Interval = TimeSpan.FromMilliseconds(1500)
+    Interval = TimeSpan.FromMilliseconds(5000)
 };
 
 _noTrackTimer.Tick += (_, _) =>
