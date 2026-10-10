@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -66,7 +66,7 @@ _noTrackTimer = new DispatcherTimer
 _noTrackTimer.Tick += (_, _) =>
 {
     _noTrackTimer.Stop();
-    UpdateTrack(null);
+    ApplyTrack(null);
 };
 
         SizeChanged += (_, _) => UpdateMarquee();
@@ -151,18 +151,26 @@ _noTrackTimer.Tick += (_, _) =>
     }
 
     private void UpdateTrack(TrackInfo? info)
-    if (info is null)
-{
-    _noTrackTimer.Stop();
-    _noTrackTimer.Start();
-    return;
-}
+    {
+        // Не сбрасываем карточку при кратковременной потере Media Session.
+        // Если трек действительно исчез, таймер очистит её через 1,5 секунды.
+        _noTrackTimer.Stop();
+        if (info is null)
+        {
+            _noTrackTimer.Start();
+            return;
+        }
 
-_noTrackTimer.Stop();
+        ApplyTrack(info);
+    }
 
-_hasTrack = true;
-_isPlaying = info.IsPlaying;
-_currentKind = info.Kind;
+    private void ApplyTrack(TrackInfo? info)
+    {
+        _noTrackTimer.Stop();
+        _hasTrack = info is not null;
+        _isPlaying = info?.IsPlaying == true;
+        _currentKind = info?.Kind;
+
         // Colores adaptativos desde la carátula
         if (_settings.Settings.AdaptiveColors && info?.AlbumArt is not null &&
             ColorExtractor.FromBitmap(info.AlbumArt) is { } extracted)
