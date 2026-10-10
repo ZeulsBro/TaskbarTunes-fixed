@@ -1,0 +1,30 @@
+
+name: Build TaskbarTunes for Windows
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "tt/**"
+      - ".github/workflows/build.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Download source
+        uses: actions/checkout@v4
+
+      - name: Install .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish Windows app
+        run: dotnet publish tt/TaskbarTunes.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: TaskbarTunes-Windows-x64
+          path: publish/
