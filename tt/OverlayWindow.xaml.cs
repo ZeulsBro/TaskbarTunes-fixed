@@ -58,6 +58,16 @@ public partial class OverlayWindow : Window
 
         _clickTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(260) };
         _clickTimer.Tick += (_, _) => { _clickTimer.Stop(); ToggleFlyout(); };
+_noTrackTimer = new DispatcherTimer
+{
+    Interval = TimeSpan.FromMilliseconds(1500)
+};
+
+_noTrackTimer.Tick += (_, _) =>
+{
+    _noTrackTimer.Stop();
+    UpdateTrack(null);
+};
 
         SizeChanged += (_, _) => UpdateMarquee();
     }
@@ -141,11 +151,18 @@ public partial class OverlayWindow : Window
     }
 
     private void UpdateTrack(TrackInfo? info)
-    {
-        _hasTrack = info is not null;
-        _isPlaying = info?.IsPlaying == true;
-        _currentKind = info?.Kind;
+    if (info is null)
+{
+    _noTrackTimer.Stop();
+    _noTrackTimer.Start();
+    return;
+}
 
+_noTrackTimer.Stop();
+
+_hasTrack = true;
+_isPlaying = info.IsPlaying;
+_currentKind = info.Kind;
         // Colores adaptativos desde la carátula
         if (_settings.Settings.AdaptiveColors && info?.AlbumArt is not null &&
             ColorExtractor.FromBitmap(info.AlbumArt) is { } extracted)
