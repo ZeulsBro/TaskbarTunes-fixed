@@ -4,16 +4,15 @@ using System.IO;
 namespace TaskbarTunes.Helpers;
 
 /// <summary>
-/// Resuelve el proceso raíz de la app de música a partir del identificador de
-/// la sesión de medios (AUMID). Con INCLUDE_TARGET_PROCESS_TREE basta capturar
-/// la raíz: los procesos hijos de audio del navegador quedan incluidos.
+/// Finds the root process belonging to the selected media session.
+/// Process loopback capture includes the target process tree, so choosing the
+/// app's root process avoids capturing unrelated browser audio.
 /// </summary>
 public static class MusicProcessFinder
 {
     private static readonly (string Key, string[] Processes)[] Map =
     {
         ("spotify", new[] { "Spotify" }),
-        ("yandex", new[] { "YandexMusic", "Yandex.Music", "yandexmusic" }),
         ("brave", new[] { "brave" }),
         ("chrome", new[] { "chrome" }),
         ("edge", new[] { "msedge" }),
@@ -27,7 +26,17 @@ public static class MusicProcessFinder
 
     public static int? FindPid(string sourceAppId)
     {
+        if (string.IsNullOrWhiteSpace(sourceAppId)) return null;
+
         string id = sourceAppId.ToLowerInvariant();
+
+        // The Yandex Music process name can be localized on some installations
+        // (for example, "Яндекс Музыка.exe"), so exact English names are not enough.
+        if (id.Contains("yandex") || id.Contains("яндекс"))
+        {
+            int? yandexPid = FindYandexMusicPid();
+            if (yandexPid is not null) return yandexPid;
+        }
 
         foreach (var (key, names) in Map)
         {
@@ -38,38 +47,73 @@ public static class MusicProcessFinder
             }
         }
 
-        // AUMID de app clásica tipo "reproductor.exe": probar el nombre directo
-        if (id.EndsWith(".exe"))
-            return FindRootPid(Path.GetFileNameWithoutExtension(id));
+        // Classic app AUMID such as "player.exe": try its process name directly.
+        if (id.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            return FindRootPid(Path.GetFileNameWithoutExtension(sourceAppId));
 
         return null;
     }
 
-    private static int? FindRootPid(string processName)
+    private static int? FindYandexMusicPid()
     {
-        Process[] procs;
-        try { procs = Process.GetProcessesByName(processName); }
+        Process[] processes;
+        try { processes = Process.GetProcesses(); }
         catch { return null; }
 
         try
         {
-            // El proceso raíz suele ser el que tiene la ventana principal;
-            // los hijos (audio del navegador, etc.) no la tienen.
-            int? result = null;
-            foreach (var p in procs)
+            Process? fallback = null;
+            foreach (var process in processes)
             {
                 try
                 {
-                    if (p.MainWindowHandle != IntPtr.Zero) { result = p.Id; break; }
+                    string name = process.ProcessName.ToLowerInvariant();
+                    bool englishName = name.Contains("yandex") && name.Contains("music");
+                    bool localizedName = name.Contains("яндекс") && name.Contains("музык");
+                    if (!englishName && !localizedName) continue;
+
+                    if (process.MainWindowHandle != IntPtr.Zero)
+                        return process.Id;
+
+                    fallback ??= process;
                 }
-                catch { }
+                catch
+                {
+                    // The process may exit or deny access while we enumerate it.
+                }
             }
-            if (result is null && procs.Length > 0) result = procs[0].Id;
-            return result;
+
+            return fallback?.Id;
         }
         finally
         {
-            foreach (var p in procs) p.Dispose();
+            foreach (var process in processes) process.Dispose();
+        }
+    }
+
+    private static int? FindRootPid(string processName)
+    {
+        Process[] processes;
+        try { processes = Process.GetProcessesByName(processName); }
+        catch { return null; }
+
+        try
+        {
+            foreach (var process in processes)
+            {
+                try
+                {
+                    if (process.MainWindowHandle != IntPtr.Zero)
+                        return process.Id;
+                }
+                catch { }
+            }
+
+            return processes.Length > 0 ? processes[0].Id : null;
+        }
+        finally
+        {
+            foreach (var process in processes) process.Dispose();
         }
     }
 }
