@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using System.Runtime.InteropServices;
 using TaskbarTunes.Controls;
 using TaskbarTunes.Helpers;
 using TaskbarTunes.Services;
@@ -19,6 +20,67 @@ namespace TaskbarTunes;
 /// </summary>
 public partial class OverlayWindow : Window
 {
+    // Detecta ventanas que ocupan toda la pantalla (pantalla completa real o borderless).
+    private bool _hiddenForFullscreen;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(nint hWnd, out NativeRect rect);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetWindowThreadProcessId(nint hWnd, out uint processId);
+
+    private bool IsAnotherAppFullscreen()
+    {
+        nint foreground = GetForegroundWindow();
+        if (foreground == 0 || new System.Windows.Interop.WindowInteropHelper(this).Handle == foreground)
+            return false;
+
+        GetWindowThreadProcessId(foreground, out uint processId);
+        if (processId == Environment.ProcessId)
+            return false;
+
+        if (!GetWindowRect(foreground, out NativeRect r))
+            return false;
+
+        var screen = WinForms.Screen.FromHandle(foreground).Bounds;
+        const int tolerance = 3;
+        return r.Left <= screen.Left + tolerance &&
+               r.Top <= screen.Top + tolerance &&
+               r.Right >= screen.Right - tolerance &&
+               r.Bottom >= screen.Bottom - tolerance;
+    }
+
+    private bool UpdateFullscreenVisibility()
+    {
+        bool fullscreen = IsAnotherAppFullscreen();
+        if (fullscreen)
+        {
+            if (Visibility == Visibility.Visible)
+                Visibility = Visibility.Hidden;
+            _hiddenForFullscreen = true;
+            return true;
+        }
+
+        if (_hiddenForFullscreen)
+        {
+            _hiddenForFullscreen = false;
+            // Let Anchor restore the configured position/visibility below.
+        }
+        return false;
+    }
     private readonly SettingsService _settings;
     private readonly MediaSessionService _media;
     private readonly HistoryService _history;
@@ -85,6 +147,9 @@ _noTrackTimer.Tick += (_, _) =>
     {
         if (_dragging) return;
         if (WidgetMenu.IsOpen) return; // no tocar la ventana mientras el menú está abierto
+
+        // Oculta únicamente el widget durante pantalla completa; al salir, Anchor lo restaura.
+        if (UpdateFullscreenVisibility()) return;
 
         var s = _settings.Settings;
         if (s.HideWhenNoMusic && !_hasTrack)
